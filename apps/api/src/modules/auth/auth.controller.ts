@@ -11,7 +11,6 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { getRuntimeConfig } from '../../config/env';
 import { AuthService } from './auth.service';
@@ -20,7 +19,6 @@ import { RegisterDto } from './dto/register.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
 const REFRESH_COOKIE = 'nasq_refresh';
-const AUTH_RATE_LIMIT = { default: { limit: 10, ttl: 60_000 } };
 
 function requestMetadata(req: Request) {
   const userAgent = req.header('user-agent');
@@ -58,7 +56,6 @@ export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @Post('register')
-  @Throttle(AUTH_RATE_LIMIT)
   @ApiOperation({ summary: 'Create a user account and session' })
   async register(
     @Body() dto: RegisterDto,
@@ -72,7 +69,6 @@ export class AuthController {
   }
 
   @Post('login')
-  @Throttle(AUTH_RATE_LIMIT)
   @ApiOperation({ summary: 'Authenticate and create a device session' })
   async login(
     @Body() dto: LoginDto,
@@ -86,7 +82,6 @@ export class AuthController {
   }
 
   @Post('refresh')
-  @Throttle(AUTH_RATE_LIMIT)
   @ApiOperation({ summary: 'Rotate refresh token and issue a new access token' })
   async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const token = readCookie(req, REFRESH_COOKIE);

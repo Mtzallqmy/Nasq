@@ -10,7 +10,7 @@
 6. Logout/Revoke يضبط `revoked_at`.
 7. `JwtAuthGuard` يتحقق من JWT **ومن أن session ما زالت نشطة**؛ لذلك الإبطال يسري فورًا بدل انتظار انتهاء access token.
 8. Web transport الحالي يضع refresh token في HttpOnly cookie. Access token يعاد للعميل ويرسل كـBearer.
-9. Register/Login/Refresh لها limits أكثر تشددًا فوق global rate limit.
+9. Register/Login/Refresh لها limits أكثر تشددًا فوق global in-memory rate limit.
 
 ## 2FA
 

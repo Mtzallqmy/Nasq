@@ -30,5 +30,5 @@ PostgreSQL هو dependency فعلي في Phase 0. Redis مذكور فقط كات
 - request/correlation ID.
 - structured stdout logs.
 - global validation/error convention.
-- rate limiting مبدئي؛ التخزين الموزع لاحقًا.
+- rate limiting مبدئي داخل الـAPI؛ التخزين الموزع لاحقًا.
 - Web Arabic/RTL first ومتجاوب، مع CSS variables و`prefers-color-scheme` كأساس Light/Dark.

@@ -1,7 +1,6 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_GUARD } from '@nestjs/core';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { rateLimitMiddleware } from './common/rate-limit.middleware';
 import { requestIdMiddleware } from './common/request-id.middleware';
 import { getRuntimeConfig } from './config/env';
 import { PrismaModule } from './database/prisma.module';
@@ -22,7 +21,6 @@ import { WorkspacesModule } from './modules/workspaces/workspaces.module';
         return config;
       },
     }),
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
     PrismaModule,
     AuditModule,
     AuthModule,
@@ -30,10 +28,9 @@ import { WorkspacesModule } from './modules/workspaces/workspaces.module';
     WorkspacesModule,
     HealthModule,
   ],
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
-    consumer.apply(requestIdMiddleware).forRoutes('*');
+    consumer.apply(requestIdMiddleware, rateLimitMiddleware).forRoutes('*');
   }
 }
