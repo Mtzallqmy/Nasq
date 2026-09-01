@@ -1,0 +1,163 @@
+name: phase-zero-ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  quality-and-smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: nasq_test
+          POSTGRES_USER: nasq
+          POSTGRES_PASSWORD: nasq_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nasq -d nasq_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      NODE_ENV: test
+      API_PORT: 4000
+      WEB_PORT: 3000
+      CORS_ORIGINS: http://localhost:3000
+      DATABASE_URL: postgresql://nasq:nasq_test_password@localhost:5432/nasq_test?schema=public
+      JWT_ACCESS_SECRET: ci-only-secret-replace-me-0123456789-abcdef
+      JWT_ACCESS_TTL_SECONDS: 900
+      REFRESH_TOKEN_TTL_DAYS: 30
+      AUTH_COOKIE_SECURE: false
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:4000/api/v1
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install
+      - name: Format
+        run: npm run format:check
+      - name: Lint
+        run: npm run lint
+      - name: Validate Prisma schema
+        run: npm run db:validate
+      - name: Apply migrations
+        run: npm run db:migrate:deploy
+      - name: Seed permission catalog
+        run: npm run db:seed
+      - name: Build
+        run: npm run build
+      - name: Start API and Web
+        run: |
+          npm run start:prod -w @nasq/api > /tmp/nasq-api.log 2>&1 &
+          echo $! > /tmp/nasq-api.pid
+          npm run start -w @nasq/web > /tmp/nasq-web.log 2>&1 &
+          echo $! > /tmp/nasq-web.pid
+      - name: Smoke test Web, API, database, Swagger, auth, sessions and workspace isolation
+        run: |
+          set -euo pipefail
+
+          for i in {1..30}; do
+            if curl --fail --silent http://localhost:4000/api/v1/health > /tmp/health.json; then break; fi
+            sleep 2
+          done
+          cat /tmp/health.json
+          test "$(jq -r .status /tmp/health.json)" = "ok"
+          test "$(jq -r .database /tmp/health.json)" = "up"
+
+          for i in {1..30}; do
+            if curl --fail --silent http://localhost:3000 > /tmp/web.html; then break; fi
+            sleep 2
+          done
+          grep -q "نَسَق" /tmp/web.html
+
+          curl --fail --silent http://localhost:4000/docs > /dev/null
+          curl --fail --silent http://localhost:4000/docs/openapi.json > /tmp/openapi.json
+          test "$(jq -r .info.title /tmp/openapi.json)" = "نَسَق API"
+
+          curl --fail --silent -c /tmp/user-a-cookies.txt \
+            -H 'content-type: application/json' \
+            -d '{"email":"user-a@nasq.local","password":"correct-horse-battery-staple","displayName":"User A"}' \
+            http://localhost:4000/api/v1/auth/register > /tmp/user-a-register.json
+          USER_A_TOKEN="$(jq -r .accessToken /tmp/user-a-register.json)"
+          test -n "$USER_A_TOKEN"
+
+          curl --fail --silent -b /tmp/user-a-cookies.txt -c /tmp/user-a-cookies.txt \
+            -X POST http://localhost:4000/api/v1/auth/refresh > /tmp/user-a-refresh.json
+          USER_A_TOKEN="$(jq -r .accessToken /tmp/user-a-refresh.json)"
+
+          curl --fail --silent \
+            -H "authorization: Bearer $USER_A_TOKEN" \
+            -H 'content-type: application/json' \
+            -d '{"name":"مساحة المستخدم أ"}' \
+            http://localhost:4000/api/v1/workspaces > /tmp/workspace-a.json
+          WORKSPACE_A_ID="$(jq -r .id /tmp/workspace-a.json)"
+          test -n "$WORKSPACE_A_ID"
+
+          curl --fail --silent \
+            -H "authorization: Bearer $USER_A_TOKEN" \
+            -H "x-workspace-id: $WORKSPACE_A_ID" \
+            http://localhost:4000/api/v1/workspaces/current/members > /tmp/members-a.json
+          test "$(jq length /tmp/members-a.json)" -eq 1
+
+          curl --fail --silent \
+            -H "authorization: Bearer $USER_A_TOKEN" \
+            -H "x-workspace-id: $WORKSPACE_A_ID" \
+            http://localhost:4000/api/v1/workspaces/current/roles > /tmp/roles-a.json
+          test "$(jq length /tmp/roles-a.json)" -eq 4
+
+          curl --fail --silent -c /tmp/user-b-cookies.txt \
+            -H 'content-type: application/json' \
+            -d '{"email":"user-b@nasq.local","password":"correct-horse-battery-staple","displayName":"User B"}' \
+            http://localhost:4000/api/v1/auth/register > /tmp/user-b-register.json
+          USER_B_TOKEN="$(jq -r .accessToken /tmp/user-b-register.json)"
+
+          curl --fail --silent \
+            -H "authorization: Bearer $USER_B_TOKEN" \
+            -H 'content-type: application/json' \
+            -d '{"name":"مساحة المستخدم ب"}' \
+            http://localhost:4000/api/v1/workspaces > /tmp/workspace-b.json
+          WORKSPACE_B_ID="$(jq -r .id /tmp/workspace-b.json)"
+
+          ISOLATION_STATUS="$(curl --silent --output /tmp/isolation.json --write-out '%{http_code}' \
+            -H "authorization: Bearer $USER_A_TOKEN" \
+            -H "x-workspace-id: $WORKSPACE_B_ID" \
+            http://localhost:4000/api/v1/workspaces/current)"
+          test "$ISOLATION_STATUS" = "403"
+
+          curl --fail --silent \
+            -H "authorization: Bearer $USER_A_TOKEN" \
+            http://localhost:4000/api/v1/auth/sessions > /tmp/sessions-a.json
+          test "$(jq length /tmp/sessions-a.json)" -eq 1
+
+          curl --fail --silent -X POST \
+            -H "authorization: Bearer $USER_A_TOKEN" \
+            http://localhost:4000/api/v1/auth/logout > /tmp/logout-a.json
+
+          REVOKED_STATUS="$(curl --silent --output /tmp/revoked.json --write-out '%{http_code}' \
+            -H "authorization: Bearer $USER_A_TOKEN" \
+            http://localhost:4000/api/v1/users/me)"
+          test "$REVOKED_STATUS" = "401"
+      - name: Print service logs on failure
+        if: failure()
+        run: |
+          echo '--- API ---'
+          cat /tmp/nasq-api.log || true
+          echo '--- WEB ---'
+          cat /tmp/nasq-web.log || true
+      - name: Preserve generated lockfile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-lockfile
+          path: package-lock.json
+          if-no-files-found: ignore
