@@ -44,6 +44,10 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm install
+      - name: Apply Prettier temporarily
+        run: npm run format
+      - name: Capture formatting patch
+        run: git diff -- . > /tmp/prettier.patch
       - name: Format
         run: npm run format:check
       - name: Lint
@@ -160,4 +164,11 @@ jobs:
         with:
           name: npm-lockfile
           path: package-lock.json
+          if-no-files-found: ignore
+      - name: Preserve formatter patch
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prettier-patch
+          path: /tmp/prettier.patch
           if-no-files-found: ignore
