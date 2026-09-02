@@ -22,7 +22,11 @@ async function json(response: Response): Promise<JsonRecord> {
 async function expectStatus(response: Response, expected: number, label: string): Promise<void> {
   if (response.status !== expected) {
     const body = await response.text();
-    assert.equal(response.status, expected, `${label}: expected ${expected}, got ${response.status}: ${body}`);
+    assert.equal(
+      response.status,
+      expected,
+      `${label}: expected ${expected}, got ${response.status}: ${body}`,
+    );
   }
 }
 
@@ -101,7 +105,14 @@ function expiredAccessToken(userId: string, email: string, sessionId: string): s
   const header = base64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
   const now = Math.floor(Date.now() / 1000);
   const payload = base64url(
-    JSON.stringify({ sub: userId, sid: sessionId, email, type: 'access', iat: now - 120, exp: now - 60 }),
+    JSON.stringify({
+      sub: userId,
+      sid: sessionId,
+      email,
+      type: 'access',
+      iat: now - 120,
+      exp: now - 60,
+    }),
   );
   const signingInput = `${header}.${payload}`;
   const signature = createHmac('sha256', secret).update(signingInput).digest('base64url');
@@ -119,7 +130,10 @@ async function run(): Promise<void> {
 
   const rotated = await refresh(loggedInA.cookie);
   await expectStatus(rotated.response, 201, 'refresh rotation');
-  assert.ok(rotated.body?.accessToken && rotated.cookie, 'rotation must issue access token and new cookie');
+  assert.ok(
+    rotated.body?.accessToken && rotated.cookie,
+    'rotation must issue access token and new cookie',
+  );
   const accessA = rotated.body.accessToken as string;
   const rotatedCookieA = rotated.cookie;
 
@@ -139,7 +153,9 @@ async function run(): Promise<void> {
   await expectStatus(crossWorkspace, 403, 'User A cannot access Workspace B');
 
   const memberBInWorkspaceB = await prisma.workspaceMember.findUniqueOrThrow({
-    where: { workspaceId_userId: { workspaceId: workspaceBId, userId: registeredB.user.id as string } },
+    where: {
+      workspaceId_userId: { workspaceId: workspaceBId, userId: registeredB.user.id as string },
+    },
   });
   const ownerRoleA = await prisma.role.findUniqueOrThrow({
     where: { workspaceId_key: { workspaceId: workspaceAId, key: 'owner' } },
@@ -158,7 +174,10 @@ async function run(): Promise<void> {
     crossRoleRejected =
       error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003';
   }
-  assert.ok(crossRoleRejected, 'DB must reject assigning a Workspace A role to a Workspace B member');
+  assert.ok(
+    crossRoleRejected,
+    'DB must reject assigning a Workspace A role to a Workspace B member',
+  );
 
   await prisma.workspaceMember.create({
     data: {
@@ -171,7 +190,11 @@ async function run(): Promise<void> {
   const unauthorizedMemberRead = await fetch(`${apiBase}/workspaces/current/members`, {
     headers: bearer(registeredB.accessToken, workspaceAId),
   });
-  await expectStatus(unauthorizedMemberRead, 403, 'member without permission cannot read workspace members');
+  await expectStatus(
+    unauthorizedMemberRead,
+    403,
+    'member without permission cannot read workspace members',
+  );
 
   const ownerCanManageRoles = await fetch(`${apiBase}/workspaces/current/roles`, {
     headers: bearer(accessA, workspaceAId),
@@ -179,7 +202,9 @@ async function run(): Promise<void> {
   await expectStatus(ownerCanManageRoles, 200, 'owner inherits roles.manage');
 
   const memberA = await prisma.workspaceMember.findUniqueOrThrow({
-    where: { workspaceId_userId: { workspaceId: workspaceAId, userId: registeredA.user.id as string } },
+    where: {
+      workspaceId_userId: { workspaceId: workspaceAId, userId: registeredA.user.id as string },
+    },
   });
   const rolesManage = await prisma.permission.findUniqueOrThrow({ where: { key: 'roles.manage' } });
   await prisma.memberPermissionOverride.upsert({
