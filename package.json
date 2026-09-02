@@ -17,6 +17,7 @@
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "audit:runtime": "npm audit --omit=dev --audit-level=high",
     "db:generate": "node scripts/with-env.mjs npm run db:generate -w @nasq/api",
     "db:validate": "node scripts/with-env.mjs npm run db:validate -w @nasq/api",
     "db:migrate": "node scripts/with-env.mjs npm run db:migrate -w @nasq/api",
