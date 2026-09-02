@@ -17,7 +17,7 @@
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "audit:runtime": "npm audit --omit=dev --audit-level=high",
+    "audit:runtime": "npm audit --omit=dev --omit=optional --audit-level=high",
     "db:generate": "node scripts/with-env.mjs npm run db:generate -w @nasq/api",
     "db:validate": "node scripts/with-env.mjs npm run db:validate -w @nasq/api",
     "db:migrate": "node scripts/with-env.mjs npm run db:migrate -w @nasq/api",
@@ -32,8 +32,5 @@
     "prettier": "3.6.2",
     "typescript": "5.9.3",
     "typescript-eslint": "8.41.0"
-  },
-  "overrides": {
-    "deepmerge-ts": "8.0.0"
   }
 }
