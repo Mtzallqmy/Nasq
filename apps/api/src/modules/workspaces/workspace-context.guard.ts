@@ -1,4 +1,10 @@
-import { BadRequestException, CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import { PrismaService } from '../../database/prisma.service';
 
@@ -10,7 +16,10 @@ export class WorkspaceContextGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request>();
     const user = request.user;
     if (!user) {
-      throw new ForbiddenException({ code: 'USER_CONTEXT_MISSING', message: 'هوية المستخدم غير متاحة' });
+      throw new ForbiddenException({
+        code: 'USER_CONTEXT_MISSING',
+        message: 'هوية المستخدم غير متاحة',
+      });
     }
 
     const workspaceId = request.header('x-workspace-id');

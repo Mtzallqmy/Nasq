@@ -23,7 +23,8 @@ export function rateLimitMiddleware(req: Request, res: Response, next: NextFunct
   const limit = strictAuth ? AUTH_LIMIT : GLOBAL_LIMIT;
   const key = `${scope}:${clientKey(req)}`;
   const existing = buckets.get(key);
-  const bucket = !existing || existing.resetAt <= now ? { count: 0, resetAt: now + WINDOW_MS } : existing;
+  const bucket =
+    !existing || existing.resetAt <= now ? { count: 0, resetAt: now + WINDOW_MS } : existing;
 
   bucket.count += 1;
   buckets.set(key, bucket);

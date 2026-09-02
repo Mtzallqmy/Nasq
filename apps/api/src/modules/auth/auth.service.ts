@@ -222,7 +222,14 @@ export class AuthService {
     return createHash('sha256').update(token).digest('hex');
   }
 
-  private publicUser(user: { id: string; email: string; displayName: string | null; locale: string; timezone: string; createdAt: Date }) {
+  private publicUser(user: {
+    id: string;
+    email: string;
+    displayName: string | null;
+    locale: string;
+    timezone: string;
+    createdAt: Date;
+  }) {
     return {
       id: user.id,
       email: user.email,

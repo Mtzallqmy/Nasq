@@ -39,69 +39,72 @@ export class WorkspacesService {
     const timezone = dto.timezone?.trim() || 'Asia/Riyadh';
     this.assertTimeZone(timezone);
 
-    const workspace = await this.prisma.$transaction(async (tx) => {
-      const permissions = [];
-      for (const key of PERMISSION_CATALOG) {
-        permissions.push(
-          await tx.permission.upsert({
-            where: { key },
-            update: {},
-            create: { key },
-          }),
-        );
-      }
+    const workspace = await this.prisma.$transaction(
+      async (tx) => {
+        const permissions = [];
+        for (const key of PERMISSION_CATALOG) {
+          permissions.push(
+            await tx.permission.upsert({
+              where: { key },
+              update: {},
+              create: { key },
+            }),
+          );
+        }
 
-      if (!permissions.length) {
-        throw new ServiceUnavailableException('Permission catalog is empty');
-      }
+        if (!permissions.length) {
+          throw new ServiceUnavailableException('Permission catalog is empty');
+        }
 
-      const created = await tx.workspace.create({
-        data: {
-          name: dto.name.trim(),
-          timezone,
-          locale: 'ar',
-          ownerUserId: userId,
-        },
-      });
+        const created = await tx.workspace.create({
+          data: {
+            name: dto.name.trim(),
+            timezone,
+            locale: 'ar',
+            ownerUserId: userId,
+          },
+        });
 
-      const member = await tx.workspaceMember.create({
-        data: {
-          workspaceId: created.id,
-          userId,
-          status: 'ACTIVE',
-        },
-      });
-
-      const createdRoles: Record<string, { id: string }> = {};
-      for (const role of DEFAULT_ROLES) {
-        const createdRole = await tx.role.create({
+        const member = await tx.workspaceMember.create({
           data: {
             workspaceId: created.id,
-            key: role.key,
-            name: role.name,
-            isSystem: role.isSystem,
+            userId,
+            status: 'ACTIVE',
           },
-          select: { id: true },
         });
-        createdRoles[role.key] = createdRole;
-      }
 
-      const ownerRole = createdRoles.owner;
-      if (!ownerRole) throw new Error('Owner role was not created');
+        const createdRoles: Record<string, { id: string }> = {};
+        for (const role of DEFAULT_ROLES) {
+          const createdRole = await tx.role.create({
+            data: {
+              workspaceId: created.id,
+              key: role.key,
+              name: role.name,
+              isSystem: role.isSystem,
+            },
+            select: { id: true },
+          });
+          createdRoles[role.key] = createdRole;
+        }
 
-      await tx.workspaceMemberRole.create({
-        data: { workspaceMemberId: member.id, roleId: ownerRole.id, workspaceId: created.id },
-      });
+        const ownerRole = createdRoles.owner;
+        if (!ownerRole) throw new Error('Owner role was not created');
 
-      await tx.rolePermission.createMany({
-        data: permissions.map((permission) => ({
-          roleId: ownerRole.id,
-          permissionId: permission.id,
-        })),
-      });
+        await tx.workspaceMemberRole.create({
+          data: { workspaceMemberId: member.id, roleId: ownerRole.id, workspaceId: created.id },
+        });
 
-      return created;
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+        await tx.rolePermission.createMany({
+          data: permissions.map((permission) => ({
+            roleId: ownerRole.id,
+            permissionId: permission.id,
+          })),
+        });
+
+        return created;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
 
     await this.audit.record({
       workspaceId: workspace.id,
