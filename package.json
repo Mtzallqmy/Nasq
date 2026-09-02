@@ -1,0 +1,36 @@
+{
+  "name": "nasq",
+  "version": "0.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22 <23",
+    "npm": ">=10"
+  },
+  "scripts": {
+    "dev": "concurrently -n api,web \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "node scripts/with-env.mjs npm run dev -w @nasq/api",
+    "dev:web": "node scripts/with-env.mjs npm run dev -w @nasq/web",
+    "build": "npm run build -w @nasq/api && npm run build -w @nasq/web",
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "audit:runtime": "npm audit --omit=dev --omit=optional --audit-level=high",
+    "db:generate": "node scripts/with-env.mjs npm run db:generate -w @nasq/api",
+    "db:validate": "node scripts/with-env.mjs npm run db:validate -w @nasq/api",
+    "db:migrate": "node scripts/with-env.mjs npm run db:migrate -w @nasq/api",
+    "db:migrate:deploy": "node scripts/with-env.mjs npm run db:migrate:deploy -w @nasq/api",
+    "db:seed": "node scripts/with-env.mjs npm run db:seed -w @nasq/api"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.35.0",
+    "concurrently": "9.2.4",
+    "eslint": "9.35.0",
+    "globals": "16.3.0",
+    "prettier": "3.6.2",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.41.0"
+  }
+}
