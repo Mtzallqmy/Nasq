@@ -8,7 +8,9 @@ import { HttpExceptionFilter } from './common/http-exception.filter';
 import { getRuntimeConfig } from './config/env';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bufferLogs: true,
+  });
   const config = getRuntimeConfig();
 
   // Foundation deliberately does not trust X-Forwarded-* yet. Until the production
