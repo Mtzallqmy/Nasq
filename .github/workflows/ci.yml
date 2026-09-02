@@ -1,13 +1,146 @@
-name: phase-zero-staging
+name: phase-zero-ci
 
 on:
-  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
 
 permissions:
   contents: read
 
 jobs:
-  staging:
+  quality-and-smoke:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: nasq_test
+          POSTGRES_USER: nasq
+          POSTGRES_PASSWORD: nasq_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nasq -d nasq_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      NODE_ENV: test
+      API_PORT: 4000
+      WEB_PORT: 3000
+      CORS_ORIGINS: http://localhost:3000
+      DATABASE_URL: postgresql://nasq:nasq_test_password@localhost:5432/nasq_test?schema=public
+      JWT_ACCESS_SECRET: ci-only-secret-replace-me-0123456789-abcdef
+      JWT_ACCESS_TTL_SECONDS: 900
+      REFRESH_TOKEN_TTL_DAYS: 30
+      AUTH_COOKIE_SECURE: false
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:4000/api/v1
+
     steps:
-      - run: echo "Phase 0 final quality gate is being prepared"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Deterministic install
+        run: npm ci
+
+      - name: Capture full npm audit report
+        run: npm audit --json > /tmp/npm-audit.json || true
+
+      - name: Capture dependency tree
+        run: npm ls --all --json > /tmp/npm-dependency-tree.json || true
+
+      - name: Runtime high/critical vulnerability gate
+        run: npm run audit:runtime
+
+      - name: Format check committed files
+        id: format_check
+        run: npm run format:check
+
+      - name: Generate formatting patch after failed check
+        if: failure() && steps.format_check.outcome == 'failure'
+        run: |
+          npm run format
+          git diff -- . > /tmp/prettier.patch
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Validate Prisma schema
+        run: npm run db:validate
+
+      - name: Apply migrations to empty PostgreSQL
+        run: npm run db:migrate:deploy
+
+      - name: Seed permission catalog
+        run: npm run db:seed
+
+      - name: Build API and Web
+        run: npm run build
+
+      - name: Start API and Web
+        run: |
+          npm run start:prod -w @nasq/api > /tmp/nasq-api.log 2>&1 &
+          echo $! > /tmp/nasq-api.pid
+          npm run start -w @nasq/web > /tmp/nasq-web.log 2>&1 &
+          echo $! > /tmp/nasq-web.pid
+
+      - name: API database health, Swagger, OpenAPI and Web smoke
+        run: |
+          set -euo pipefail
+
+          for i in {1..30}; do
+            if curl --fail --silent http://localhost:4000/api/v1/health > /tmp/health.json; then break; fi
+            sleep 2
+          done
+          cat /tmp/health.json
+          test "$(jq -r .status /tmp/health.json)" = "ok"
+          test "$(jq -r .database /tmp/health.json)" = "up"
+
+          curl --fail --silent http://localhost:4000/docs > /tmp/swagger.html
+          grep -q "swagger-ui" /tmp/swagger.html
+
+          curl --fail --silent http://localhost:4000/docs/openapi.json > /tmp/openapi.json
+          test "$(jq -r .info.title /tmp/openapi.json)" = "نَسَق API"
+
+          for i in {1..30}; do
+            if curl --fail --silent http://localhost:3000 > /tmp/web.html; then break; fi
+            sleep 2
+          done
+          grep -q "نَسَق" /tmp/web.html
+
+      - name: Registration, login, token, session, workspace and permission security tests
+        run: npm run test:foundation -w @nasq/api
+
+      - name: Print service logs on failure
+        if: failure()
+        run: |
+          echo '--- API ---'
+          cat /tmp/nasq-api.log || true
+          echo '--- WEB ---'
+          cat /tmp/nasq-web.log || true
+
+      - name: Preserve npm security evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-security-evidence
+          path: |
+            /tmp/npm-audit.json
+            /tmp/npm-dependency-tree.json
+          if-no-files-found: warn
+
+      - name: Preserve formatter patch when needed
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prettier-patch
+          path: /tmp/prettier.patch
+          if-no-files-found: ignore
